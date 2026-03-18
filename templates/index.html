@@ -1,0 +1,283 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Scenario-Aware Ads Analytics & Conversion Predictor</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="https://cdn.jsdelivr.net/npm/echarts/dist/echarts.min.js"></script>
+</head>
+<body>
+
+<div class="app-container">
+
+  <!-- Top Navigation -->
+  <header class="app-header">
+    <h1>Scenario-Aware Ads Analytics & Conversion Predictor</h1>
+    <nav class="nav-tabs">
+      <button id="tab-dashboard" class="tab-btn active">📊 Dashboard</button>
+      <button id="tab-predict" class="tab-btn">🤖 Predict</button>
+    </nav>
+  </header>
+
+  <!-- ===== Page 1: Dashboard ===== -->
+  <section id="page-dashboard" class="page-section">
+
+    <!-- KPI Cards -->
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-label">Total Clicks</div>
+        <div class="kpi-value">{{ total_clicks }}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Total Impressions</div>
+        <div class="kpi-value">{{ total_impr }}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Average CPC</div>
+        <div class="kpi-value">{{ avg_cpc_kpi }}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">CTR (Overall)</div>
+        <div class="kpi-value">{{ ctr_kpi }}%</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Conversion Rate</div>
+        <div class="kpi-value">{{ conv_rate_kpi }}%</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Total Cost</div>
+        <div class="kpi-value">{{ total_cost }}</div>
+      </div>
+    </div>
+
+    <!-- Charts Row: Trend + Heatmap -->
+    <div class="chart-row">
+      <div id="chart-trend" class="chart-box"></div>
+      <div id="chart-heatmap" class="chart-box"></div>
+    </div>
+
+    <!-- Charts Row: Age + Channel Distribution -->
+    <div class="chart-row">
+      <div id="chart-age" class="chart-box"></div>
+      <div id="chart-channel" class="chart-box"></div>
+    </div>
+
+  </section>
+
+  <!-- ===== Page 2: Predict Model ===== -->
+  <section id="page-predict" class="page-section hidden">
+
+    <div class="predict-layout">
+      <div class="predict-form">
+        <h2>🤖 Predict Conversion Probability</h2>
+        <p class="hint">Based on current ad features, the model predicts the likelihood of conversion.</p>
+
+        <label>Clicks</label>
+        <input id="input-clicks" type="number" min="0" step="1" value="10" />
+
+        <label>Cost</label>
+        <input id="input-cost" type="number" min="0" step="0.01" placeholder="Optional (auto = Clicks × CPC)" />
+
+        <label>Average CPC</label>
+        <input id="input-avgcpc" type="number" min="0" step="0.01" value="1.5" />
+
+        <label>Impressions</label>
+        <input id="input-impr" type="number" min="0" step="1" value="1000" />
+
+        <label>CTR (You may enter 0.12 or 12.0 for 12%)</label>
+        <input id="input-ctr" type="number" min="0" step="0.01" value="1.2" />
+
+        <label>Campaign Type</label>
+        <input id="input-campaign" type="text" placeholder="e.g., Leads / Brand Awareness / Retargeting" />
+
+        <label>Platform</label>
+        <select id="input-platform">
+          <option>Google Ads</option>
+          <option>Facebook Ads</option>
+        </select>
+
+        <label>Age Group</label>
+        <select id="input-age">
+          <option>18–24</option>
+          <option>25–34</option>
+          <option>35–44</option>
+          <option>45–54</option>
+          <option>55–64</option>
+          <option>65+</option>
+          <option>Unknown</option>
+        </select>
+
+        <button id="btn-predict">Predict Conversion</button>
+
+        <div id="predict-result" class="predict-result">
+          <p>Result will be displayed here</p>
+        </div>
+      </div>
+
+      <div class="predict-tips">
+        <h3>📌 Notes</h3>
+        <ul>
+          <li>The model was trained on recent Google Ads data.</li>
+          <li>Features used: Clicks, Cost, Average CPC, Impressions, CTR.</li>
+          <li>If CTR > 1, it will be automatically converted to percentage internally.</li>
+          <li>Cost can be left blank and will be auto-estimated.</li>
+        </ul>
+      </div>
+    </div>
+
+  </section>
+
+</div>
+
+
+<script>
+  // ===== Tab Switching =====
+  const tabDash = document.getElementById("tab-dashboard");
+  const tabPred = document.getElementById("tab-predict");
+
+  const pageDash = document.getElementById("page-dashboard");
+  const pagePred = document.getElementById("page-predict");
+
+  tabDash.onclick = () => {
+    tabDash.classList.add("active");
+    tabPred.classList.remove("active");
+    pageDash.classList.remove("hidden");
+    pagePred.classList.add("hidden");
+  };
+
+  tabPred.onclick = () => {
+    tabPred.classList.add("active");
+    tabDash.classList.remove("active");
+    pagePred.classList.remove("hidden");
+    pageDash.classList.add("hidden");
+  };
+
+  // ===== Load Data from Backend =====
+  const lineDates = {{ line_dates|safe }};
+  const lineClicks = {{ line_clicks|safe }};
+  const lineCost = {{ line_cost|safe }};
+
+  const heatmapDays = {{ heatmap_days|safe }};
+  const heatmapHours = {{ heatmap_hours|safe }};
+  const heatmapData = {{ heatmap_data|safe }};
+
+  const ageLabels = {{ age_labels|safe }};
+  const ageValues = {{ age_values|safe }};
+
+  const channelLabels = {{ channel_labels|safe }};
+  const channelSpend = {{ channel_spend|safe }};
+
+  // ===== Chart 1: Clicks & Cost Trend =====
+  const chartTrend = echarts.init(document.getElementById("chart-trend"));
+  chartTrend.setOption({
+    title: { text: "Daily Clicks & Cost Trend (Google Ads)" },
+    tooltip: { trigger: "axis" },
+    legend: { data: ["Clicks", "Cost"] },
+    xAxis: { type: "category", data: lineDates },
+    yAxis: [
+      { type: "value", name: "Clicks" },
+      { type: "value", name: "Cost", position: "right" }
+    ],
+    series: [
+      { name: "Clicks", type: "line", smooth: true, data: lineClicks },
+      { name: "Cost", type: "line", smooth: true, yAxisIndex: 1, data: lineCost }
+    ]
+  });
+
+  // ===== Chart 2: Click Heatmap (Hour × Weekday) =====
+  const chartHeat = echarts.init(document.getElementById("chart-heatmap"));
+  chartHeat.setOption({
+    title: { text: "Clicks Heatmap (Hour × Weekday)" },
+    tooltip: { position: "top" },
+    grid: { height: "70%", top: "10%" },
+    xAxis: { type: "category", data: heatmapHours, name: "Hour" },
+    yAxis: { type: "category", data: heatmapDays, name: "Weekday" },
+    visualMap: {
+      min: 0,
+      max: Math.max(...heatmapData.map(d => d[2])) || 1,
+      calculable: true,
+      orient: "horizontal",
+      left: "center",
+      bottom: "5%"
+    },
+    series: [{
+      name: "Clicks",
+      type: "heatmap",
+      data: heatmapData,
+      label: { show: false },
+      emphasis: { itemStyle: { shadowBlur: 12 } }
+    }]
+  });
+
+  // ===== Chart 3: Age Group Performance =====
+  const chartAge = echarts.init(document.getElementById("chart-age"));
+  chartAge.setOption({
+    title: { text: "Age Group Performance" },
+    tooltip: { trigger: "axis" },
+    xAxis: { type: "category", data: ageLabels },
+    yAxis: { type: "value" },
+    series: [{ type: "bar", data: ageValues }]
+  });
+
+  // ===== Chart 4: Channel Spend Distribution =====
+  const chartChannel = echarts.init(document.getElementById("chart-channel"));
+  chartChannel.setOption({
+    title: { text: "Spend Distribution by Channel", left: "center" },
+    tooltip: { trigger: "item" },
+    legend: { orient: "vertical", left: "left" },
+    series: [{
+      name: "Spend",
+      type: "pie",
+      radius: "65%",
+      data: channelLabels.map((label, i) => ({ name: label, value: channelSpend[i] }))
+    }]
+  });
+
+  // ===== Predict Logic =====
+  const resultBox = document.getElementById("predict-result");
+
+  document.getElementById("btn-predict").onclick = async () => {
+    resultBox.innerHTML = "<p>Predicting...</p>";
+
+    const payload = {
+      clicks: document.getElementById("input-clicks").value,
+      cost: document.getElementById("input-cost").value,
+      avg_cpc: document.getElementById("input-avgcpc").value,
+      impressions: document.getElementById("input-impr").value,
+      ctr: document.getElementById("input-ctr").value,
+      campaign_type: document.getElementById("input-campaign").value,
+      platform: document.getElementById("input-platform").value,
+      age_group: document.getElementById("input-age").value
+    };
+
+    try {
+      const r = await fetch("/api/predict", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify(payload)
+      });
+
+      const data = await r.json();
+      if (!r.ok || data.error) {
+        resultBox.innerHTML = "<p>Error: " + (data.error || "Request failed") + "</p>";
+        return;
+      }
+
+      const probPct = (data.probability * 100).toFixed(2);
+      const highValue = data.label === 1 ? "High Value Lead 🔥" : "Low Conversion Potential ⚠";
+
+      resultBox.innerHTML = `
+        <p>Conversion Probability: <strong>${probPct}%</strong></p>
+        <p>Traffic Category: <strong>${highValue}</strong></p>
+      `;
+
+    } catch(e){
+      console.error(e);
+      resultBox.innerHTML = "<p>Server Error (Check backend log)</p>";
+    }
+  };
+</script>
+
+</body>
+</html>
